@@ -1,31 +1,59 @@
-# ==== app.py ====
 import streamlit as st
-import pandas as pd
 from data_loader import get_data
 from lstm_model import train_lstm_model, predict_next_return
 from optimizer import optimize_portfolio
 from backtest import backtest_portfolio
 
-st.title("Real-Time Portfolio Diversification Dashboard")
+import numpy as np
 
-assets = ['BTC-USD', 'GC=F', 'SPY', 'ASII.JK']
-data = get_data(assets)
-returns = data.pct_change().dropna()
-st.line_chart(data)
+st.set_page_config(layout="wide")
+st.title("📊 Smart Portfolio Diversification with ML")
 
+# Aset yang digunakan
+assets = ["BTC-USD", "GC=F", "SPY", "ASII.JK"]
+
+# Ambil data historis
+with st.spinner("📥 Mengambil data..."):
+    data = get_data(assets)
+    returns = data.pct_change().dropna()
+
+# Cek data yang berhasil dimuat
+available_assets = [ticker for ticker in assets if ticker in returns.columns]
+if not available_assets:
+    st.error("Gagal memuat data untuk semua aset. Periksa ticker!")
+    st.stop()
+
+st.sidebar.header("⚙️ Pengaturan")
+risk_aversion = st.sidebar.slider("Risk Aversion (λ)", 0.0, 1.0, 0.5)
+
+# Prediksi return dengan LSTM
+st.subheader("📈 Prediksi Return Berikutnya (LSTM)")
 predicted = []
-for ticker in assets:
+valid_assets = []
+
+for ticker in available_assets:
     series = returns[ticker].dropna().values
-    model = train_lstm_model(series)
-    pred = predict_next_return(model, series)
-    predicted.append(pred)
+    if len(series) > 60:
+        model = train_lstm_model(series)
+        pred = predict_next_return(model, series)
+        predicted.append(pred)
+        valid_assets.append(ticker)
+        st.write(f"{ticker}: {pred:.5f}")
+    else:
+        st.warning(f"Data {ticker} terlalu sedikit untuk LSTM")
 
-cov_matrix = returns.cov().values
-weights = optimize_portfolio(np.array(predicted), cov_matrix)
+if not predicted:
+    st.error("Tidak ada aset yang berhasil diprediksi.")
+    st.stop()
 
-st.subheader("Optimal Portfolio Weights")
-st.bar_chart(pd.Series(weights, index=assets))
+# Optimisasi portofolio
+st.subheader("🧠 Optimisasi Portofolio")
+weights = optimize_portfolio(predicted, returns[valid_assets], risk_aversion)
 
-st.subheader("Backtest Result")
-backtest = backtest_portfolio(weights, returns)
-st.line_chart(backtest)
+for ticker, weight in zip(valid_assets, weights):
+    st.write(f"{ticker}: {weight*100:.2f}%")
+
+# Backtesting
+st.subheader("🔁 Backtesting Portofolio")
+perf = backtest_portfolio(returns[valid_assets], weights)
+st.line_chart(perf)
