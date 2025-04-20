@@ -20,7 +20,7 @@ with st.spinner("📥 Mengambil data..."):
 # Cek data yang berhasil dimuat
 available_assets = [ticker for ticker in assets if ticker in returns.columns]
 if not available_assets:
-    st.error("Gagal memuat data untuk semua aset. Periksa ticker!")
+    st.error("❌ Gagal memuat data untuk semua aset. Periksa ticker atau koneksi data.")
     st.stop()
 
 st.sidebar.header("⚙️ Pengaturan")
@@ -38,22 +38,27 @@ for ticker in available_assets:
         pred = predict_next_return(model, series)
         predicted.append(pred)
         valid_assets.append(ticker)
-        st.write(f"{ticker}: {pred:.5f}")
+        st.write(f"🔹 {ticker}: `{pred:.5f}`")
     else:
-        st.warning(f"Data {ticker} terlalu sedikit untuk LSTM")
+        st.warning(f"⚠️ Data {ticker} terlalu pendek untuk prediksi LSTM")
 
 if not predicted:
-    st.error("Tidak ada aset yang berhasil diprediksi.")
+    st.error("❌ Tidak ada prediksi yang berhasil dilakukan. Coba aset lain.")
     st.stop()
+
+# Sinkronisasi aset prediksi & return
+final_assets = [ticker for ticker in valid_assets if ticker in returns.columns]
+synced_predicted = [pred for i, pred in enumerate(predicted) if valid_assets[i] in final_assets]
+synced_returns = returns[final_assets]
 
 # Optimisasi portofolio
 st.subheader("🧠 Optimisasi Portofolio")
-weights = optimize_portfolio(predicted, returns[valid_assets], risk_aversion)
+weights = optimize_portfolio(synced_predicted, synced_returns, risk_aversion)
 
-for ticker, weight in zip(valid_assets, weights):
-    st.write(f"{ticker}: {weight*100:.2f}%")
+for ticker, weight in zip(final_assets, weights):
+    st.write(f"✅ {ticker}: `{weight*100:.2f}%`")
 
 # Backtesting
 st.subheader("🔁 Backtesting Portofolio")
-perf = backtest_portfolio(returns[valid_assets], weights)
-st.line_chart(perf)
+perf = backtest_portfolio(synced_returns, weights)
+st.line_chart(perf, use_container_width=True)
